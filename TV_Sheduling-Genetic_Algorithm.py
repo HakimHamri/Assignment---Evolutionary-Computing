@@ -1,7 +1,7 @@
 import csv
 
 # Function to read the CSV file and convert it to the desired format
-def read_csv_to_dict(file_path):
+def read_csv_to_dict(program_rating.csv):
     program_ratings = {}
     
     with open(file_path, mode='r', newline='') as file:
