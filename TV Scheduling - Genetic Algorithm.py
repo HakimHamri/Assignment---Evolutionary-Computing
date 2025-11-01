@@ -104,4 +104,26 @@ def genetic_algorithm(initial_schedule, generations=GEN, population_size=POP, cr
 # ------------------------------------------------------------
 # RUN GENETIC ALGORITHM
 # ------------------------------------------------------------
-if st.button("🚀 Run Optim
+if st.button("🚀 Run Optimization"):
+    st.write("Running Genetic Algorithm... please wait ⏳")
+
+    initial_schedule = all_programs.copy()
+    random.shuffle(initial_schedule)
+
+    best_schedule = genetic_algorithm(initial_schedule)
+    total_score = fitness_function(best_schedule)
+
+    st.success("✅ Optimization Complete!")
+    st.subheader("📋 Final Optimal Schedule")
+    schedule_table = pd.DataFrame({
+        "Time Slot": [f"{hour:02d}:00" for hour in all_time_slots],
+        "Program": best_schedule,
+        "Rating": [program_ratings[best_schedule[i]][i] for i in range(len(best_schedule))]
+    })
+    st.dataframe(schedule_table)
+    st.write(f"### ⭐ Total Ratings: {total_score:.2f}")
+
+# ------------------------------------------------------------
+# FOOTER
+# ------------------------------------------------------------
+st.caption("Developed by Muhammad Hakim — Genetic Algorithm Scheduler Demo")
