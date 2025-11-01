@@ -1,4 +1,3 @@
-# streamlit_tv_ga.py
 import streamlit as st
 import pandas as pd
 import random
@@ -9,9 +8,13 @@ st.set_page_config(page_title="TV Scheduling GA", layout="wide")
 st.title("📺 TV Program Scheduling — Genetic Algorithm")
 st.markdown(
     """
-This app runs a Genetic Algorithm to produce a TV schedule.
-- Upload a CSV of program ratings (one row per program).
-- Columns: Program name, then rating for each time slot (e.g. 6,7,...,23).
+This app runs a **Genetic Algorithm (GA)** to generate an optimal TV schedule  
+based on program ratings for each time slot.
+
+### Instructions
+1. Upload a CSV file containing program ratings (or use the sample data).
+2. Adjust GA parameters such as crossover and mutation rates.
+3. Run the GA (once or 3 trials) to find the best schedule.
 """
 )
 
@@ -25,7 +28,7 @@ def read_csv_to_dict(file_buffer, expected_slots=None):
     program_col = df.columns[0]
     programs = df[program_col].astype(str).tolist()
     rating_cols = df.columns[1:].tolist()
-    # Convert to floats
+
     ratings = {}
     for idx, program in enumerate(programs):
         row_vals = df.iloc[idx, 1:].tolist()
@@ -38,13 +41,12 @@ def read_csv_to_dict(file_buffer, expected_slots=None):
                 f"Program '{program}' has {len(row_vals)} ratings but expected {expected_slots} (one per time slot)."
             )
         ratings[program] = row_vals
-    return ratings, rating_cols
+    return ratings, rating_cols, df
 
 # ----------------------------
-# GA core (chromosome: list of program names length = T)
+# GA core
 # ----------------------------
 def fitness_function(schedule, ratings):
-    # schedule: list of program names, length T
     total = 0.0
     for slot_idx, program in enumerate(schedule):
         total += ratings[program][slot_idx]
@@ -53,7 +55,6 @@ def fitness_function(schedule, ratings):
 def initialize_population(all_programs, T, population_size):
     pop = []
     for _ in range(population_size):
-        # allow repeats: choose a program for each timeslot
         chromosome = [random.choice(all_programs) for _ in range(T)]
         pop.append(chromosome)
     return pop
@@ -85,17 +86,13 @@ def genetic_algorithm(
     if seed is not None:
         random.seed(seed)
 
-    # initialize
     population = initialize_population(all_programs, T, population_size)
 
-    for gen in range(generations):
-        # sort by fitness descending
+    for _ in range(generations):
         population.sort(key=lambda s: fitness_function(s, ratings), reverse=True)
         new_pop = []
-        # elitism
         new_pop.extend(population[:elitism_size])
 
-        # create till population_size
         while len(new_pop) < population_size:
             parent1, parent2 = random.choices(population, k=2)
             if random.random() < crossover_rate:
@@ -114,7 +111,6 @@ def genetic_algorithm(
 
         population = new_pop
 
-    # return best individual
     population.sort(key=lambda s: fitness_function(s, ratings), reverse=True)
     best = population[0]
     best_score = fitness_function(best, ratings)
@@ -123,11 +119,11 @@ def genetic_algorithm(
 # ----------------------------
 # Streamlit UI
 # ----------------------------
-st.sidebar.header("Upload & Time Slots")
+st.sidebar.header("Upload Dataset & Time Slots")
 uploaded_file = st.sidebar.file_uploader("Upload program ratings CSV", type=["csv"])
 use_sample = st.sidebar.checkbox("Use sample demo data", value=False)
 
-# time slots: default 6..23 (18 slots)
+# Define time slots
 start_hour = st.sidebar.number_input("Start hour (inclusive)", min_value=0, max_value=23, value=6)
 end_hour = st.sidebar.number_input("End hour (inclusive)", min_value=0, max_value=23, value=23)
 if end_hour <= start_hour:
@@ -137,63 +133,69 @@ T = len(all_time_slots)
 
 ratings = {}
 rating_cols = []
+df_display = None
 
+# Load data
 if use_sample and not uploaded_file:
-    # build a tiny sample with 4 programs and T slots
-    programs = ["News", "ShowA", "MovieA", "Sports"]
-    data = {
-        "Program": programs
-    }
-    for i, h in enumerate(all_time_slots):
-        # simple synthetic ratings
-        data[str(h)] = [round(random.uniform(0.5, 3.5) + (0.5 if h >= 19 else 0), 2) for _ in programs]
+    programs = ["News", "Drama", "Movie", "Sports"]
+    data = {"Program": programs}
+    for h in all_time_slots:
+        data[str(h)] = [round(random.uniform(1, 5), 2) for _ in programs]
     df_sample = pd.DataFrame(data)
-    st.info("Using generated sample data (you can still upload your own CSV).")
-    st.dataframe(df_sample)
-    buf = io.StringIO()
-    df_sample.to_csv(buf, index=False)
-    buf.seek(0)
-    ratings, rating_cols = read_csv_to_dict(buf, expected_slots=T)
+    st.info("Using generated sample data.")
+    ratings, rating_cols, df_display = read_csv_to_dict(io.StringIO(df_sample.to_csv(index=False)), expected_slots=T)
 elif uploaded_file:
     try:
-        ratings, rating_cols = read_csv_to_dict(uploaded_file, expected_slots=T)
+        ratings, rating_cols, df_display = read_csv_to_dict(uploaded_file, expected_slots=T)
         st.success(f"Loaded {len(ratings)} programs with {T} time slots ({all_time_slots[0]}–{all_time_slots[-1]}).")
     except Exception as e:
         st.error(f"Error reading CSV: {e}")
         st.stop()
 else:
-    st.info("Upload a CSV or check 'Use sample demo data' to proceed.")
+    st.info("Upload a CSV or select 'Use sample demo data' to proceed.")
     st.stop()
+
+# ----------------------------
+# Show dataset and summary
+# ----------------------------
+st.subheader("📊 Dataset Preview")
+st.dataframe(df_display, use_container_width=True)
+
+# Dataset summary
+st.subheader("📈 Dataset Summary")
+df_summary = df_display.copy()
+df_summary["Average Rating"] = df_summary.iloc[:, 1:].mean(axis=1)
+st.dataframe(df_summary[["Program", "Average Rating"]], use_container_width=True)
 
 all_programs = list(ratings.keys())
 
-# GA parameter inputs
-st.sidebar.header("GA parameters (default values)")
+# ----------------------------
+# GA Parameters
+# ----------------------------
+st.sidebar.header("GA Parameters")
 generations = st.sidebar.number_input("Generations", min_value=1, max_value=10000, value=100)
 population_size = st.sidebar.number_input("Population size", min_value=2, max_value=1000, value=50)
 elitism_size = st.sidebar.number_input("Elitism size", min_value=0, max_value=50, value=2)
 
-# Trial controls: allow 1 or 3 trials
 trials = st.sidebar.selectbox("Number of trials", options=[1, 3], index=1)
 
-# Parameter controls for each trial
-trial_params = []
 st.sidebar.markdown("---")
 st.sidebar.write("Set CO_R and MUT_R for each trial")
+trial_params = []
 for i in range(trials):
     st.sidebar.markdown(f"**Trial {i+1}**")
-    co_r = st.sidebar.slider(f"CO_R (trial {i+1})", min_value=0.0, max_value=0.95, value=0.8, step=0.01, key=f"co_{i}")
-    # mutation range set by assignment: 0.01 - 0.05 (default 0.02)
-    mut_r = st.sidebar.slider(f"MUT_R (trial {i+1})", min_value=0.01, max_value=0.05, value=0.02, step=0.01, key=f"mut_{i}")
+    co_r = st.sidebar.slider(f"CO_R (trial {i+1})", 0.0, 0.95, 0.8, 0.01, key=f"co_{i}")
+    mut_r = st.sidebar.slider(f"MUT_R (trial {i+1})", 0.01, 0.05, 0.02, 0.01, key=f"mut_{i}")
     trial_params.append((co_r, mut_r))
 
 run_seed = st.sidebar.number_input("Random seed (0 = random)", min_value=0, value=0)
-st.sidebar.markdown("---")
-run_button = st.sidebar.button("Run GA")
+run_button = st.sidebar.button("Run Genetic Algorithm")
 
-# Main app: run when pressed
+# ----------------------------
+# Run GA and Show Results
+# ----------------------------
 if run_button:
-    st.header("Results")
+    st.header("🧬 Genetic Algorithm Results")
     cols = st.columns(trials)
     results = []
 
@@ -201,7 +203,7 @@ if run_button:
         with cols[i]:
             st.subheader(f"Trial {i+1}")
             co_r, mut_r = trial_params[i]
-            seed = None if run_seed == 0 else int(run_seed + i)  # Vary seed per trial if provided
+            seed = None if run_seed == 0 else int(run_seed + i)
 
             best_schedule, best_score = genetic_algorithm(
                 ratings=ratings,
@@ -215,7 +217,6 @@ if run_button:
                 seed=seed,
             )
 
-            # prepare human-friendly table
             df_out = pd.DataFrame({
                 "Hour": [f"{h:02d}:00" for h in all_time_slots],
                 "Program": best_schedule,
@@ -223,12 +224,12 @@ if run_button:
             })
             st.write(f"Parameters: CO_R={co_r}, MUT_R={mut_r}")
             st.dataframe(df_out, use_container_width=True)
-            st.write(f"Total Rating (fitness): **{best_score:.4f}**")
+            st.write(f"**Total Rating (Fitness): {best_score:.4f}**")
             results.append((co_r, mut_r, best_schedule, best_score))
 
-    # summary
+    # Summary table
     st.markdown("---")
-    st.subheader("Summary of trials")
+    st.subheader("Summary of Trials")
     summary_rows = []
     for idx, (co, mu, sched, score) in enumerate(results, start=1):
         summary_rows.append({
@@ -238,5 +239,4 @@ if run_button:
             "Total Rating": round(score, 4)
         })
     st.table(pd.DataFrame(summary_rows))
-
-    st.success("GA runs finished.")
+    st.success("GA runs completed successfully ✅")
