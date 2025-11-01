@@ -152,25 +152,32 @@ def tournament_selection(pop: List[List[str]], fitnesses: List[float], k=3) -> L
     best_idx = max(participants, key=lambda i: fitnesses[i])
     return pop[best_idx]
 
-def ordered_crossover(parent1: List[str], parent2: List[str]) -> Tuple[List[str], List[str]]:
-    """Ordered crossover (OX) — preserves order and avoids duplicates for permutations."""
+def ordered_crossover(parent1, parent2):
+    """Safe ordered crossover (works even if parents contain duplicates)."""
     size = len(parent1)
     if size < 2:
         return parent1[:], parent2[:]
     a, b = sorted(random.sample(range(size), 2))
+
     def ox(p1, p2):
         child = [None] * size
-        # copy segment
+        # Copy segment from p1
         child[a:b+1] = p1[a:b+1]
-        # fill remaining from p2 in order
+        # Get remaining genes from p2, skipping duplicates
         p2_iter = [g for g in p2 if g not in child[a:b+1]]
         idx = 0
         for i in range(size):
             if child[i] is None:
-                child[i] = p2_iter[idx]
-                idx += 1
+                if idx < len(p2_iter):
+                    child[i] = p2_iter[idx]
+                    idx += 1
+                else:
+                    # Fallback: fill randomly if p2_iter runs out (due to duplicates)
+                    child[i] = random.choice(p2)
         return child
+
     return ox(parent1, parent2), ox(parent2, parent1)
+
 
 def swap_mutation(schedule: List[str]) -> List[str]:
     """Swap two positions — keeps permutation property."""
